@@ -6,9 +6,21 @@ compute_model() — pure math, re-runs instantly on param changes
 import warnings
 warnings.filterwarnings("ignore")
 
+import time
 import numpy as np
 import yfinance as yf
+import requests_cache
 from scipy.optimize import brentq
+
+# ── HTTP-level cache ──────────────────────────────────────────────────────────
+# Shared across all yf.Ticker calls in this process.
+# Memory backend avoids filesystem permission issues on Streamlit Cloud.
+# expire_after=1800 means Yahoo is only contacted once per ticker per 30 min.
+_YF_SESSION = requests_cache.CachedSession(
+    backend="memory",
+    expire_after=1800,
+    stale_if_error=True,   # serve stale data rather than a 429 error
+)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -44,8 +56,28 @@ def _row(df, *labels):
 
 # ── data layer ────────────────────────────────────────────────────────────────
 
+def _is_rate_limit(exc: Exception) -> bool:
+    s = str(exc).lower()
+    return any(x in s for x in ["too many requests", "rate limit", "429", "rateerror"])
+
+
 def fetch_data(ticker: str) -> dict:
-    tk   = yf.Ticker(ticker.upper().strip())
+    """Fetch with up to 3 retries on rate-limit errors (3 s / 6 s / 12 s backoff)."""
+    last_exc: Exception = RuntimeError("Unknown error")
+    for attempt in range(3):
+        try:
+            return _fetch_data_inner(ticker)
+        except Exception as exc:
+            last_exc = exc
+            if _is_rate_limit(exc) and attempt < 2:
+                time.sleep(3 * 2 ** attempt)
+                continue
+            raise
+    raise last_exc
+
+
+def _fetch_data_inner(ticker: str) -> dict:
+    tk   = yf.Ticker(ticker.upper().strip(), session=_YF_SESSION)
     info = tk.info or {}
 
     price  = _safe(info.get("currentPrice") or info.get("regularMarketPrice"))

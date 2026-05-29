@@ -228,7 +228,7 @@ def chart_heatmap(m_labels, w_labels, matrix):
 
 # ── data cache ────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def _fetch(ticker):
     return fetch_data(ticker)
 
@@ -313,7 +313,16 @@ if go_btn and ticker_in.strip():
         try:
             st.session_state.raw_data = _fetch(ticker_in.strip().upper())
         except Exception as e:
-            st.error(f"**Data error:** {e}")
+            err = str(e)
+            if any(x in err.lower() for x in ["too many requests", "rate limit", "429"]):
+                st.error(
+                    "**Yahoo Finance is temporarily rate-limiting this server.** "
+                    "This is common on shared cloud IPs. "
+                    "Please wait **30–60 seconds** and click **Analyze** again — "
+                    "the second request will be served from cache and will succeed instantly."
+                )
+            else:
+                st.error(f"**Data error:** {err}")
             st.stop()
 
 raw = st.session_state.raw_data
