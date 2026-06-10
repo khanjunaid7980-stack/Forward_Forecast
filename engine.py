@@ -9,18 +9,7 @@ warnings.filterwarnings("ignore")
 import time
 import numpy as np
 import yfinance as yf
-import requests_cache
 from scipy.optimize import brentq
-
-# ── HTTP-level cache ──────────────────────────────────────────────────────────
-# Shared across all yf.Ticker calls in this process.
-# Memory backend avoids filesystem permission issues on Streamlit Cloud.
-# expire_after=1800 means Yahoo is only contacted once per ticker per 30 min.
-_YF_SESSION = requests_cache.CachedSession(
-    backend="memory",
-    expire_after=1800,
-    stale_if_error=True,   # serve stale data rather than a 429 error
-)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -77,7 +66,7 @@ def fetch_data(ticker: str) -> dict:
 
 
 def _fetch_data_inner(ticker: str) -> dict:
-    tk   = yf.Ticker(ticker.upper().strip(), session=_YF_SESSION)
+    tk   = yf.Ticker(ticker.upper().strip())
     info = tk.info or {}
 
     price  = _safe(info.get("currentPrice") or info.get("regularMarketPrice"))
